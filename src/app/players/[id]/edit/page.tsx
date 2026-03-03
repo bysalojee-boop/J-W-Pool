@@ -8,8 +8,8 @@ export default function EditPlayerPage() {
     const params = useParams();
     const [name, setName] = useState("");
     const [age, setAge] = useState("");
-    const [imageFile, setImageFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<string | null>(null);
+    const [imageBase64, setImageBase64] = useState<string | null | undefined>(undefined);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -31,10 +31,14 @@ export default function EditPlayerPage() {
 
     const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            setImageFile(file);
-            setPreview(URL.createObjectURL(file));
-        }
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const result = ev.target?.result as string;
+            setPreview(result);
+            setImageBase64(result);
+        };
+        reader.readAsDataURL(file);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -42,12 +46,15 @@ export default function EditPlayerPage() {
         if (!name || !age) { setError("Name and age are required."); return; }
         setSaving(true);
         setError("");
-        const fd = new FormData();
-        fd.append("name", name);
-        fd.append("age", age);
-        if (imageFile) fd.append("image", imageFile);
 
-        const res = await fetch(`/api/players/${params.id}`, { method: "PATCH", body: fd });
+        const body: any = { name, age: parseInt(age, 10) };
+        if (imageBase64 !== undefined) body.imageUrl = imageBase64;
+
+        const res = await fetch(`/api/players/${params.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
         if (res.ok) {
             router.push(`/players/${params.id}`);
         } else {

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { writeFile } from "fs/promises";
-import { join } from "path";
-import { mkdir } from "fs/promises";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
     const players = await prisma.player.findMany({
@@ -13,31 +12,25 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-    const formData = await req.formData();
-    const name = formData.get("name") as string;
-    const ageStr = formData.get("age") as string;
-    const image = formData.get("image") as File | null;
+    try {
+        const body = await req.json();
+        const { name, age, imageUrl } = body;
 
-    if (!name || !ageStr) {
-        return NextResponse.json({ error: "Name and age required" }, { status: 400 });
+        if (!name || age === undefined || age === null) {
+            return NextResponse.json({ error: "Name and age required" }, { status: 400 });
+        }
+
+        const player = await prisma.player.create({
+            data: {
+                name: name.trim(),
+                age: parseInt(String(age), 10),
+                imageUrl: imageUrl || null,
+            },
+        });
+
+        return NextResponse.json(player, { status: 201 });
+    } catch (e: any) {
+        console.error("Error creating player:", e);
+        return NextResponse.json({ error: "Failed to create player", details: e?.message }, { status: 500 });
     }
-
-    const age = parseInt(ageStr, 10);
-    let imageUrl: string | undefined;
-
-    if (image && image.size > 0) {
-        const bytes = await image.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-        const uploadDir = join(process.cwd(), "public", "uploads");
-        await mkdir(uploadDir, { recursive: true });
-        const filename = `${Date.now()}-${image.name.replace(/\s+/g, "_")}`;
-        await writeFile(join(uploadDir, filename), buffer);
-        imageUrl = `/uploads/${filename}`;
-    }
-
-    const player = await prisma.player.create({
-        data: { name, age, imageUrl },
-    });
-
-    return NextResponse.json(player, { status: 201 });
 }

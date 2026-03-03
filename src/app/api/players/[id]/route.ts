@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
 
@@ -26,7 +28,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         else if (g.player1Result === "LOSS") losses++;
     }
     for (const g of gamesAsP2) {
-        // player2 result is inverse of player1Result
         if (g.player1Result === "LOSS") wins++;
         else if (g.player1Result === "WIN") losses++;
     }
@@ -41,7 +42,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     for (const opp of allOpponents) {
         h2h[opp.id] = { opponent: opp, wins: 0, losses: 0, games: 0 };
     }
-
     for (const g of gamesAsP1) {
         const h = h2h[g.player2Id];
         if (!h) continue;
@@ -85,33 +85,24 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
-    const formData = await req.formData();
-    const name = formData.get("name") as string;
-    const ageStr = formData.get("age") as string;
-    const image = formData.get("image") as File | null;
-
-    const data: any = {};
-    if (name) data.name = name;
-    if (ageStr) data.age = parseInt(ageStr, 10);
-
-    if (image && image.size > 0) {
-        const bytes = await image.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-        const uploadDir = join(process.cwd(), "public", "uploads");
-        await mkdir(uploadDir, { recursive: true });
-        const filename = `${Date.now()}-${image.name.replace(/\s+/g, "_")}`;
-        await writeFile(join(uploadDir, filename), buffer);
-        data.imageUrl = `/uploads/${filename}`;
-    }
 
     try {
+        const body = await req.json();
+        const { name, age, imageUrl } = body;
+
+        const data: any = {};
+        if (name) data.name = name.trim();
+        if (age !== undefined && age !== null) data.age = parseInt(String(age), 10);
+        if (imageUrl !== undefined) data.imageUrl = imageUrl || null;
+
         const player = await prisma.player.update({
             where: { id },
             data,
         });
         return NextResponse.json(player);
-    } catch (e) {
-        return NextResponse.json({ error: "Failed to update player" }, { status: 500 });
+    } catch (e: any) {
+        console.error("Error updating player:", e);
+        return NextResponse.json({ error: "Failed to update player", details: e?.message }, { status: 500 });
     }
 }
 
@@ -123,12 +114,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
             data: { deletedAt: new Date() },
         });
         return NextResponse.json({ success: true });
-    } catch (e) {
-        return NextResponse.json({ error: "Failed to delete player" }, { status: 500 });
+    } catch (e: any) {
+        console.error("Error deleting player:", e);
+        return NextResponse.json({ error: "Failed to delete player", details: e?.message }, { status: 500 });
     }
 }
-
-// Helper imports needed for PATCH
-import { writeFile, mkdir } from "fs/promises";
-import { join } from "path";
-
